@@ -1,0 +1,72 @@
+locals {
+  environment = "dev"
+  name_prefix = "ecommerce-${local.environment}"
+  common_tags = {
+    Environment = local.environment
+    Project     = "ecommerce"
+    ManagedBy   = "terraform"
+  }
+}
+
+module "vpc" {
+  source = "../../modules/vpc"
+
+  name_prefix          = local.name_prefix
+  vpc_cidr             = "10.0.0.0/16"
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.0.0/24"]
+  private_subnet_cidrs = ["10.0.2.0/24", "10.0.3.0/24"]
+  availability_zones   = ["us-east-1a", "us-east-1b"]
+  enable_nat_gateway   = false
+  tags                 = local.common_tags
+}
+
+module "jumphost" {
+  source = "../../modules/ec2_jumphost"
+
+  name_prefix   = local.name_prefix
+  vpc_id        = module.vpc.vpc_id
+  subnet_id     = module.vpc.public_subnet_ids[0]
+  ami_id        = "ami-0332d564d76dbd8d6"
+  instance_type = "c7i-flex.large"
+  key_name      = "pc"
+  user_data     = file("${path.module}/../../modules/ec2_jumphost/templates/user_data.sh.tpl")
+  tags          = local.common_tags
+}
+
+module "eks" {
+  source = "../../modules/eks"
+
+  name_prefix        = local.name_prefix
+  kubernetes_version = "1.35"
+  subnet_ids         = module.vpc.public_subnet_ids
+  node_subnet_ids    = module.vpc.public_subnet_ids
+  node_instance_type = "c7i-flex.large"
+  node_desired_size  = 1
+  node_min_size      = 1
+  node_max_size      = 4
+  tags               = local.common_tags
+}
+
+module "dockerhub" {
+  source = "../../modules/dockerhub"
+
+  dockerhub_username = "ravibhadarge"
+  environment        = local.environment
+  service_names = [
+    "frontend",
+    "catalog-service",
+    "cart-service",
+    "order-service",
+    "payment-service",
+    "user-service",
+    "notification-service",
+    "admin-dashboard"
+  ]
+}
+
+module "s3" {
+  source = "../../modules/s3"
+
+  name_prefix = local.name_prefix
+  tags        = local.common_tags
+}

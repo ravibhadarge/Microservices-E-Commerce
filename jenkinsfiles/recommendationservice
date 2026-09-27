@@ -1,0 +1,112 @@
+pipeline {
+    agent any
+
+    environment {
+        GIT_REPO_NAME = "Microservices-E-Commerce-eks-project"
+        GIT_EMAIL = "ravibhadarge15@gmail.com"
+        GIT_USER_NAME = "ravibhadarge"
+
+        IMAGE_NAME = "recommendationservice"
+        DOCKER_IMAGE = "ravibhadarge/recommendationservice"
+        YAML_FILE = "recommendationservice.yaml"
+    }
+
+    stages {
+
+        stage('Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/ravibhadarge/Microservices-E-Commerce-eks-project.git'
+            }
+        }
+
+        stage('Docker Version') {
+            steps {
+                sh 'docker --version'
+            }
+        }
+
+        stage('Docker Image Build') {
+            steps {
+                dir('src/recommendationservice') {
+                    sh '''
+                        set -e
+                        docker build \
+                            -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                            -t ${DOCKER_IMAGE}:latest \
+                            .
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Hub Login') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            --username "$DOCKER_USERNAME" \
+                            --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Hub Push') {
+            steps {
+                sh '''
+                    set -e
+                    docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                    docker push ${DOCKER_IMAGE}:latest
+                '''
+            }
+        }
+
+        stage('Update Deployment File') {
+            steps {
+                dir('kubernetes-files') {
+                    withCredentials([
+                        string(
+                            credentialsId: 'my-git-pattoken',
+                            variable: 'GIT_TOKEN'
+                        )
+                    ]) {
+                        sh '''
+                            set -e
+
+                            git config user.email "${GIT_EMAIL}"
+                            git config user.name "${GIT_USER_NAME}"
+
+                            sed -i "s#image:.*#image: ${DOCKER_IMAGE}:${BUILD_NUMBER}#g" "${YAML_FILE}"
+
+                            git add "${YAML_FILE}"
+
+                            git diff --cached --quiet || \
+                            git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
+
+                            git push https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}
