@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        GIT_REPO_NAME = "Microservices-E-Commerce-eks-project"
+        GIT_REPO_NAME = "Microservices-E-Commerce"
         GIT_EMAIL = "YOUR_ACTUAL_GITHUB_EMAIL"
         GIT_USER_NAME = "ravibhadarge"
 

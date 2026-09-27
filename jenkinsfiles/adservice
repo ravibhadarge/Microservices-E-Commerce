@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     environment {
-        GIT_REPO_NAME = "Microservices-E-Commerce-eks-project"
+        GIT_REPO_NAME = "Microservices-E-Commerce"
         GIT_EMAIL = "ravibhadarge15@gmail.com"
         GIT_USER_NAME = "ravibhadarge"
 
         DOCKER_USERNAME = "ravibhadarge"
         IMAGE_NAME = "adservice"
-        REPO_URL = "ravibhadarge/adservice"
+        REPO_URL = "ravibhadarge/ecommerce-adservice"
         YAML_FILE = "adservice.yaml"
     }
 
