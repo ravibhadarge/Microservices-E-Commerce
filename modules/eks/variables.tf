@@ -47,3 +47,27 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "addons" {
+  description = "EKS add-on configuration"
+
+  type = object({
+    ebs_csi = optional(object({
+      enabled = optional(bool, true)
+      version = optional(string, "v1.66.0-eksbuild.1")
+    }), {})
+  })
+
+  default = {}
+}
+
+#variable "cluster_name" {
+#  description = "Name of the EKS cluster"
+ # type        = string
+#}
+
+variable "environment" {
+  description = "Environment name (dev/staging/production)"
+  type        = string
+  default     = "dev"
+}

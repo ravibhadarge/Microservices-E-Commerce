@@ -1,0 +1,46 @@
+resource "helm_release" "karpenter" {
+  name       = "karpenter"
+  namespace  = "kube-system"
+  repository = "oci://public.ecr.aws/karpenter"
+  chart      = "karpenter"
+  version    = var.karpenter_version
+
+  create_namespace = false
+
+  wait    = true
+  timeout = 900
+
+  values = [
+    yamlencode({
+      settings = {
+        clusterName    = var.cluster_name
+        clusterEndpoint = var.cluster_endpoint
+      }
+
+      serviceAccount = {
+        annotations = {
+          "eks.amazonaws.com/role-arn" = aws_iam_role.controller.arn
+        }
+      }
+
+      controller = {
+        resources = {
+          requests = {
+            cpu    = "200m"
+            memory = "512Mi"
+          }
+
+          limits = {
+            cpu    = "500m"
+            memory = "1Gi"
+          }
+        }
+      }
+    })
+  ]
+
+  depends_on = [
+    aws_iam_role_policy_attachment.controller,
+    aws_eks_access_entry.node
+  ]
+}

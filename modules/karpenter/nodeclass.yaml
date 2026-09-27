@@ -1,0 +1,24 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  amiFamily: AL2023
+
+  instanceProfile: "${KARPENTER_INSTANCE_PROFILE}"
+
+  subnetSelectorTerms:
+    - id: "${SUBNET_1}"
+    - id: "${SUBNET_2}"
+
+  securityGroupSelectorTerms:
+    - id: "${SECURITY_GROUP_ID}"
+
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      rootVolume: true
+      ebs:
+        volumeSize: 30Gi
+        volumeType: gp3
+        encrypted: true
+        deleteOnTermination: true

@@ -32,18 +32,3 @@ output "ssh_command" {
   description = "SSH command to connect to jumphost"
   value       = "ssh -i ~/pc.pem ec2-user@${module.jumphost.public_ip}"
 }
-
-output "cluster_security_group_id" {
-  description = "EKS cluster security group ID"
-  value       = module.eks.cluster_security_group_id
-}
-
-output "oidc_provider_arn" {
-  description = "EKS OIDC provider ARN"
-  value       = module.eks.oidc_provider_arn
-}
-
-output "oidc_issuer_url" {
-  description = "EKS OIDC issuer URL"
-  value       = module.eks.oidc_issuer_url
-}

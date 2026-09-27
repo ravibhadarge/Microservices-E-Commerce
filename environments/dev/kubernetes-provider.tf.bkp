@@ -1,0 +1,44 @@
+terraform {
+  required_providers {
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.35"
+    }
+  }
+}
+
+# Auth token from the EKS cluster (short-lived, refreshed by the AWS provider)
+data "aws_eks_cluster_auth" "dev" {
+  name = module.eks.cluster_name
+}
+
+provider "kubernetes" {
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  token                  = data.aws_eks_cluster_auth.dev.token
+}
+
+# ---------------------------------------------------------------------------
+# Example managed resources (uncomment what you want Terraform to own).
+# The EBS CSI driver is already installed by module.eks.module.addons.
+# ---------------------------------------------------------------------------
+
+# resource "kubernetes_namespace_v1" "dev" {
+#   metadata {
+#     name = "dev"
+#   }
+# }
+
+# resource "kubernetes_storage_class_v1" "ebs_gp3" {
+#   metadata {
+#     name = "gp3"
+#   }
+#   storage_provisioner    = "ebs.csi.aws.com"
+#   reclaim_policy         = "Delete"
+#   volume_binding_mode    = "WaitForFirstConsumer"
+#   allow_volume_expansion = true
+#   parameters = {
+#     type      = "gp3"
+#     encrypted = "true"
+#   }
+# }

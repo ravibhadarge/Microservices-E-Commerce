@@ -31,6 +31,12 @@ resource "aws_eks_cluster" "this" {
   name     = "${var.name_prefix}-cluster"
   version  = var.kubernetes_version
   role_arn = aws_iam_role.cluster.arn
+  
+  access_config {
+    authentication_mode = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+  
 
   vpc_config {
     subnet_ids              = var.subnet_ids
@@ -101,4 +107,19 @@ resource "aws_eks_node_group" "this" {
   ]
 
   tags = var.tags
+}
+
+module "addons" {
+  source = "./addons"
+
+  cluster_name      = aws_eks_cluster.this.name
+  oidc_provider_arn = aws_iam_openid_connect_provider.eks.arn
+  oidc_issuer_url   = aws_iam_openid_connect_provider.eks.url
+  tags              = var.tags
+  addons            = var.addons
+
+  depends_on = [
+    aws_eks_cluster.this,
+    aws_iam_openid_connect_provider.eks
+  ]
 }
