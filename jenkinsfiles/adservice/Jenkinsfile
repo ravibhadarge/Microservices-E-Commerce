@@ -104,25 +104,38 @@ pipeline {
                             set -e
 
                             git config user.email "${GIT_EMAIL}"
-                            git config user.name "${GIT_USER_NAME}"
+                        git config user.name "${GIT_USER_NAME}"
+
+                        # Push to the repo the job cloned.
+                        git remote set-url origin "https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
+                        git fetch origin main
+
+                        ok=0
+                        for i in 1 2 3 4 5; do
+                            # Sync to newest remote main FIRST -> commit is always a fast-forward.
+                            git reset --hard origin/main
 
                             echo "Updating ${YAML_FILE}"
-                            echo "Image: ${REPO_URL}:${BUILD_NUMBER}"
-
-                            sed -i "s#image:.*#image: ${REPO_URL}:${BUILD_NUMBER}#g" "${YAML_FILE}"
-
-                            cat "${YAML_FILE}"
-
+                            echo "Image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                            sed -i "s#image:.*#image: ${DOCKER_IMAGE}:${BUILD_NUMBER}#g" "${YAML_FILE}"
                             git add "${YAML_FILE}"
 
                             if git diff --cached --quiet; then
                                 echo "No deployment changes."
-                            else
-                                git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
+                                ok=1; break
+                            fi
 
-                                git config --global credential.helper store
-                        echo "https://${GIT_USER_NAME}:${git_token}@github.com" > ~/.git-credentials
-                        git pull --rebase origin main && git push origin HEAD:main
+                            git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
+                            if git push origin HEAD:main; then
+                                echo "GitHub deployment update successful!"
+                                ok=1; break
+                            fi
+
+                            echo "Push rejected, re-syncing and retrying (${i}/5)..."
+                            git fetch origin main
+                            sleep $((RANDOM % 5 + 2))
+                        done
+                        [ "$ok" = "1" ] || { echo "ERROR: push failed after retries"; exit 1; }
                             fi
 
                             echo "GitHub deployment update successful!"
