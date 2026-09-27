@@ -28,7 +28,7 @@ spec:
               - ALL
           privileged: false
           readOnlyRootFilesystem: true
-        image: ravibhadarge/cartservice:5
+        image: ravibhadarge/cartservice:10
         ports:
         - containerPort: 7070
         env:
