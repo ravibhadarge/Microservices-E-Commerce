@@ -100,7 +100,7 @@ pipeline {
                             git diff --cached --quiet || \
                             git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
 
-                            git push https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                            git pull --rebase https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git main && git push https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
                         '''
                     }
                 }
