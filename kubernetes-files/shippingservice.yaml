@@ -27,7 +27,7 @@ spec:
               - ALL
           privileged: false
           readOnlyRootFilesystem: true
-        image: ravibhadarge/shippingservice:3
+        image: ravibhadarge/shippingservice:9
         ports:
         - containerPort: 50051
         env:
