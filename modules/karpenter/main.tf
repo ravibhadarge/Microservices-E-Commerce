@@ -135,14 +135,12 @@ resource "kubernetes_manifest" "nodepool" {
               values   = ["on-demand"]
             },
             {
-              key      = "node.kubernetes.io/instance-category"
+              key      = "node.kubernetes.io/instance-type"
               operator = "In"
-              values   = ["c", "m", "r"]
-            },
-            {
-              key      = "node.kubernetes.io/instance-generation"
-              operator = "Gt"
-              values   = ["5"]
+              values = [
+                "c7i-flex.large",
+                "m7i-flex.large"
+              ]
             }
           ]
         }

@@ -152,6 +152,9 @@ data "aws_iam_policy_document" "controller" {
     effect = "Allow"
 
     actions = [
+      "iam:GetInstanceProfile",
+      "iam:ListInstanceProfiles",
+      "iam:GetRole",
       "iam:CreateInstanceProfile",
       "iam:TagInstanceProfile",
       "iam:AddRoleToInstanceProfile",
@@ -160,9 +163,11 @@ data "aws_iam_policy_document" "controller" {
     ]
 
     resources = [
-      "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:instance-profile/*"
+      "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:instance-profile/*",
+      "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/*"
     ]
   }
+
 }
 
 resource "aws_iam_policy" "controller" {
