@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build All Services') {
+            parallel {
+                stage('adservice') {
+                    steps {
+                        build job: 'microservices-adservice', wait: true
+                    }
+                }
+                stage('cartservice') {
+                    steps {
+                        build job: 'microservices-cartservice', wait: true
+                    }
+                }
+                stage('checkoutservice') {
+                    steps {
+                        build job: 'microservices-checkoutservice', wait: true
+                    }
+                }
+                stage('currencyservice') {
+                    steps {
+                        build job: 'microservices-currencyservice', wait: true
+                    }
+                }
+                stage('emailservice') {
+                    steps {
+                        build job: 'microservices-emailservice', wait: true
+                    }
+                }
+                stage('frontend') {
+                    steps {
+                        build job: 'microservices-frontend', wait: true
+                    }
+                }
+                stage('loadgenerator') {
+                    steps {
+                        build job: 'microservices-loadgenerator', wait: true
+                    }
+                }
+                stage('paymentservice') {
+                    steps {
+                        build job: 'microservices-paymentservice', wait: true
+                    }
+                }
+                stage('productcatalogservice') {
+                    steps {
+                        build job: 'microservices-productcatalogservice', wait: true
+                    }
+                }
+                stage('recommendationservice') {
+                    steps {
+                        build job: 'microservices-recommendationservice', wait: true
+                    }
+                }
+                stage('shippingservice') {
+                    steps {
+                        build job: 'microservices-shippingservice', wait: true
+                    }
+                }
+            }
+        }
+    }
+}
