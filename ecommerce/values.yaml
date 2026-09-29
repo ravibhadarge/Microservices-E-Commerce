@@ -1,0 +1,47 @@
+namespace: ecommerce
+
+services:
+
+  adservice:
+    repository: ravibhadarge/ecommerce-adservice
+    tag: "10"
+
+  cartservice:
+    repository: ravibhadarge/ecommerce-cartservice
+    tag: latest
+
+  checkoutservice:
+    repository: ravibhadarge/checkoutservice
+    tag: "9"
+
+  currencyservice:
+    repository: ravibhadarge/currencyservice
+    tag: "9"
+
+  emailservice:
+    repository: ravibhadarge/emailservice
+    tag: "2"
+
+  frontend:
+    repository: ravibhadarge/frontend
+    tag: "9"
+
+  loadgenerator:
+    repository: ravibhadarge/loadgenerator
+    tag: "9"
+
+  paymentservice:
+    repository: ravibhadarge/paymentservice
+    tag: "9"
+
+  productcatalogservice:
+    repository: ravibhadarge/productcatalogservice
+    tag: "10"
+
+  recommendationservice:
+    repository: ravibhadarge/recommendationservice
+    tag: "2"
+
+  shippingservice:
+    repository: ravibhadarge/shippingservice
+    tag: "9"
