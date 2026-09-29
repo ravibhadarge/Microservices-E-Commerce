@@ -88,9 +88,11 @@ pipeline {
                 dir('kubernetes-files') {
                     withCredentials([
                         string(
-                            credentialsId: 'my-git-pattoken',
-                            variable: 'GIT_TOKEN'
-                        )
+                            usernamePassword(
+                                credentialsId: 'github-credentials',
+                                usernameVariable: 'GITHUB_USERNAME',
+                                passwordVariable: 'GITHUB_TOKEN'
+                            )
                     ]) {
                         sh '''
                             set -e
@@ -99,7 +101,7 @@ pipeline {
                         git config user.name "${GIT_USER_NAME}"
 
                         # Push to the repo the job cloned.
-                        git remote set-url origin "https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
+                        git remote set-url origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
                         git fetch origin main
 
                         ok=0
