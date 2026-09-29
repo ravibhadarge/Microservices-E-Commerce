@@ -28,7 +28,7 @@ spec:
               - ALL
           privileged: false
           readOnlyRootFilesystem: true
-        image: ravibhadarge/paymentservice:9
+        image: ravibhadarge/paymentservice:5
         ports:
         - containerPort: 50051
         env:
