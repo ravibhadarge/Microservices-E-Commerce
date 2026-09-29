@@ -27,7 +27,7 @@ spec:
                 - ALL
             privileged: false
             readOnlyRootFilesystem: true
-          image: ravibhadarge/checkoutservice:8
+          image: ravibhadarge/checkoutservice:9
           ports:
           - containerPort: 5050
           readinessProbe:
