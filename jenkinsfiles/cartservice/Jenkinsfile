@@ -85,12 +85,11 @@ pipeline {
             steps {
                 dir('kubernetes-files') {
                     withCredentials([
-                        string(
-                            usernamePassword(
-                                credentialsId: 'github-credentials',
-                                usernameVariable: 'GITHUB_USERNAME',
-                                passwordVariable: 'GITHUB_TOKEN'
-                            )
+                        usernamePassword(
+                            credentialsId: 'github-credentials',
+                            usernameVariable: 'GITHUB_USERNAME',
+                            passwordVariable: 'GITHUB_TOKEN'
+                        )
                     ]) {
                         sh '''
                             set -e
