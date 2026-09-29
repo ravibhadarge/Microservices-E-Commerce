@@ -38,6 +38,7 @@ pipeline {
                 dir('src/adservice') {
                     sh '''
                         set -e
+
                         echo "Building ${REPO_URL}:${BUILD_NUMBER}"
 
                         docker build \
@@ -59,6 +60,7 @@ pipeline {
                 ]) {
                     sh '''
                         set -e
+
                         echo "$DOCKER_PASSWORD" | docker login \
                             --username "$DOCKER_USERNAME" \
                             --password-stdin
@@ -69,25 +71,17 @@ pipeline {
 
         stage('Docker Hub Push') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        set -e
+                sh '''
+                    set -e
 
-                        echo "Pushing ${REPO_URL}:${BUILD_NUMBER}"
-                        docker push ${REPO_URL}:${BUILD_NUMBER}
+                    echo "Pushing ${REPO_URL}:${BUILD_NUMBER}"
+                    docker push ${REPO_URL}:${BUILD_NUMBER}
 
-                        echo "Pushing ${REPO_URL}:latest"
-                        docker push ${REPO_URL}:latest
+                    echo "Pushing ${REPO_URL}:latest"
+                    docker push ${REPO_URL}:latest
 
-                        echo "Docker Hub push successful!"
-                    '''
-                }
+                    echo "Docker Hub push successful!"
+                '''
             }
         }
 
@@ -95,50 +89,40 @@ pipeline {
             steps {
                 dir('kubernetes-files') {
                     withCredentials([
-                        string(
-                            credentialsId: 'my-git-pattoken',
-                            variable: 'git_token'
+                        usernamePassword(
+                            credentialsId: 'github-credentials',
+                            usernameVariable: 'GITHUB_USERNAME',
+                            passwordVariable: 'GITHUB_TOKEN'
                         )
                     ]) {
                         sh '''
                             set -e
 
                             git config user.email "${GIT_EMAIL}"
-                        git config user.name "${GIT_USER_NAME}"
+                            git config user.name "${GIT_USER_NAME}"
 
-                        # Push to the repo the job cloned.
-                        git remote set-url origin "https://${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
-                        git fetch origin main
+                            git remote set-url origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
 
-                        ok=0
-                        for i in 1 2 3 4 5; do
-                            # Sync to newest remote main FIRST -> commit is always a fast-forward.
+                            git fetch origin main
                             git reset --hard origin/main
 
                             echo "Updating ${YAML_FILE}"
+
+                            DOCKER_IMAGE="${REPO_URL}"
+
                             echo "Image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+
                             sed -i "s#image:.*#image: ${DOCKER_IMAGE}:${BUILD_NUMBER}#g" "${YAML_FILE}"
+
                             git add "${YAML_FILE}"
 
                             if git diff --cached --quiet; then
                                 echo "No deployment changes."
-                                ok=1; break
-                            fi
-
-                            git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
-                            if git push origin HEAD:main; then
+                            else
+                                git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
+                                git push origin HEAD:main
                                 echo "GitHub deployment update successful!"
-                                ok=1; break
                             fi
-
-                            echo "Push rejected, re-syncing and retrying (${i}/5)..."
-                            git fetch origin main
-                            sleep $((RANDOM % 5 + 2))
-                        done
-                        [ "$ok" = "1" ] || { echo "ERROR: push failed after retries"; exit 1; }
-                            fi
-
-                            echo "GitHub deployment update successful!"
                         '''
                     }
                 }
