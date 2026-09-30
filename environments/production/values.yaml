@@ -1,0 +1,36 @@
+namespace: production
+
+image:
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+application:
+  replicas: 3
+
+ingress:
+  enabled: true
+  host: ecommerce.example.com
+  scheme: internet-facing
+  targetType: ip
+
+hpa:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  cpuUtilization: 65
+  memoryUtilization: 75
+
+postgres:
+  enabled: true
+  database: ecommerce
+  username: ecommerce
+  password: CHANGE_ME_USE_SECRETS_MANAGER
+  storage:
+    size: 50Gi
+    storageClassName: gp3
+
+redis:
+  enabled: true
+
+loadgenerator:
+  enabled: false

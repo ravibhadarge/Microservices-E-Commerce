@@ -1,47 +1,247 @@
-namespace: ecommerce
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: dev
+
+image:
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+global:
+  imagePullPolicy: IfNotPresent
+
+application:
+  replicas: 2
 
 services:
 
+  frontend:
+    enabled: true
+    repository: ravibhadarge/frontend
+    port: 8080
+    servicePort: 80
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  backend:
+    enabled: true
+    repository: ravibhadarge/backend
+    port: 8080
+    servicePort: 80
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
   adservice:
+    enabled: true
     repository: ravibhadarge/ecommerce-adservice
-    tag: "10"
+    port: 9555
+    servicePort: 9555
+    replicas: 2
+    resources:
+      requests:
+        cpu: 200m
+        memory: 180Mi
+      limits:
+        cpu: 300m
+        memory: 300Mi
 
   cartservice:
-    repository: ravibhadarge/ecommerce-cartservice
-    tag: latest
+    enabled: true
+    repository: ravibhadarge/cartservice
+    port: 7070
+    servicePort: 7070
+    replicas: 2
+    resources:
+      requests:
+        cpu: 200m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 128Mi
 
   checkoutservice:
+    enabled: true
     repository: ravibhadarge/checkoutservice
-    tag: "9"
+    port: 5050
+    servicePort: 5050
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
   currencyservice:
+    enabled: true
     repository: ravibhadarge/currencyservice
-    tag: "9"
+    port: 7000
+    servicePort: 7000
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
   emailservice:
+    enabled: true
     repository: ravibhadarge/emailservice
-    tag: "2"
-
-  frontend:
-    repository: ravibhadarge/frontend
-    tag: "9"
-
-  loadgenerator:
-    repository: ravibhadarge/loadgenerator
-    tag: "9"
+    port: 8080
+    servicePort: 5000
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
   paymentservice:
+    enabled: true
     repository: ravibhadarge/paymentservice
-    tag: "9"
+    port: 50051
+    servicePort: 50051
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
   productcatalogservice:
+    enabled: true
     repository: ravibhadarge/productcatalogservice
-    tag: "10"
+    port: 3550
+    servicePort: 3550
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
 
   recommendationservice:
+    enabled: true
     repository: ravibhadarge/recommendationservice
-    tag: "2"
+    port: 8080
+    servicePort: 8080
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 220Mi
+      limits:
+        cpu: 200m
+        memory: 450Mi
 
   shippingservice:
+    enabled: true
     repository: ravibhadarge/shippingservice
-    tag: "9"
+    port: 50051
+    servicePort: 50051
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  storage:
+    enabled: false
+    size: 2Gi
+    storageClassName: gp3
+  resources:
+    requests:
+      cpu: 70m
+      memory: 200Mi
+    limits:
+      cpu: 125m
+      memory: 256Mi
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  port: 5432
+  database: ecommerce
+  username: ecommerce
+  password: ecommercepassword
+  storage:
+    size: 10Gi
+    storageClassName: gp3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+loadgenerator:
+  enabled: true
+  image:
+    repository: ravibhadarge/loadgenerator
+    tag: "latest"
+  replicas: 1
+  users: "10"
+
+ingress:
+  enabled: true
+  className: alb
+  host: dev.example.com
+  scheme: internet-facing
+  targetType: ip
+  healthcheckPath: /_healthz
+  annotations:
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpuUtilization: 70
+  memoryUtilization: 80
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+serviceAccount:
+  create: false
+  name: default

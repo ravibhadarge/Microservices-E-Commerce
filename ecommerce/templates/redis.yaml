@@ -1,0 +1,83 @@
+{{- if .Values.redis.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cart
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: redis-cart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-cart
+  template:
+    metadata:
+      labels:
+        app: redis-cart
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.port }}
+
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.redis.port }}
+            periodSeconds: 5
+
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.redis.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+
+          {{- if .Values.redis.storage.enabled }}
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          {{- end }}
+
+      {{- if .Values.redis.storage.enabled }}
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+      {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cart
+  namespace: {{ .Values.namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-cart
+  ports:
+    - name: redis
+      port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+{{- end }}

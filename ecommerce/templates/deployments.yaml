@@ -1,0 +1,185 @@
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $name }}
+    {{- include "ecommerce.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas | default $.Values.application.replicas }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      serviceAccountName: {{ include "ecommerce.serviceAccountName" $ }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: {{ $.Values.podSecurityContext.runAsNonRoot }}
+        runAsUser: {{ $.Values.podSecurityContext.runAsUser }}
+        runAsGroup: {{ $.Values.podSecurityContext.runAsGroup }}
+        fsGroup: {{ $.Values.podSecurityContext.fsGroup }}
+
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.repository }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+
+          ports:
+            - name: app
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+
+          env:
+            - name: PORT
+              value: "{{ $svc.port }}"
+
+          {{- if eq $name "frontend" }}
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "productcatalogservice:3550"
+            - name: CURRENCY_SERVICE_ADDR
+              value: "currencyservice:7000"
+            - name: CART_SERVICE_ADDR
+              value: "cartservice:7070"
+            - name: RECOMMENDATION_SERVICE_ADDR
+              value: "recommendationservice:8080"
+            - name: SHIPPING_SERVICE_ADDR
+              value: "shippingservice:50051"
+            - name: CHECKOUT_SERVICE_ADDR
+              value: "checkoutservice:5050"
+            - name: AD_SERVICE_ADDR
+              value: "adservice:9555"
+            - name: ENV_PLATFORM
+              value: "aws"
+            - name: ENABLE_PROFILER
+              value: "0"
+          {{- end }}
+
+          {{- if eq $name "backend" }}
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          {{- end }}
+
+          {{- if eq $name "cartservice" }}
+            - name: REDIS_ADDR
+              value: "redis-cart:6379"
+          {{- end }}
+
+          {{- if eq $name "recommendationservice" }}
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "productcatalogservice:3550"
+          {{- end }}
+
+          {{- if eq $name "checkoutservice" }}
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "productcatalogservice:3550"
+            - name: SHIPPING_SERVICE_ADDR
+              value: "shippingservice:50051"
+            - name: PAYMENT_SERVICE_ADDR
+              value: "paymentservice:50051"
+            - name: EMAIL_SERVICE_ADDR
+              value: "emailservice:5000"
+            - name: CURRENCY_SERVICE_ADDR
+              value: "currencyservice:7000"
+            - name: CART_SERVICE_ADDR
+              value: "cartservice:7070"
+          {{- end }}
+
+          {{- if or (eq $name "adservice") (eq $name "currencyservice") (eq $name "paymentservice") (eq $name "productcatalogservice") (eq $name "shippingservice") (eq $name "emailservice") }}
+            - name: DISABLE_PROFILER
+              value: "1"
+          {{- end }}
+
+          {{- if eq $name "frontend" }}
+          readinessProbe:
+            httpGet:
+              path: /_healthz
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /_healthz
+              port: {{ $svc.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- else if eq $name "backend" }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ $svc.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- else }}
+          readinessProbe:
+            grpc:
+              port: {{ $svc.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            grpc:
+              port: {{ $svc.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          {{- end }}
+
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+{{- end }}
+{{- end }}
