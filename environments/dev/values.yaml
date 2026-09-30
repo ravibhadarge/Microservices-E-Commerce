@@ -1,25 +1,20 @@
 namespace: dev
-
 image:
-  tag: "latest"
+  tag: "dev"
   pullPolicy: IfNotPresent
-
 application:
   replicas: 2
-
 ingress:
   enabled: true
   host: dev.example.com
   scheme: internet-facing
   targetType: ip
-
 hpa:
   enabled: true
   minReplicas: 2
   maxReplicas: 6
   cpuUtilization: 70
   memoryUtilization: 80
-
 postgres:
   enabled: true
   database: ecommerce
@@ -28,10 +23,8 @@ postgres:
   storage:
     size: 10Gi
     storageClassName: gp3
-
 redis:
   enabled: true
-
 loadgenerator:
   enabled: true
   replicas: 1
