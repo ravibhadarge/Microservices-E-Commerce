@@ -29,7 +29,7 @@ spec:
                 - ALL
             privileged: false
             readOnlyRootFilesystem: true
-          image: ravibhadarge/frontend:5
+          image: ravibhadarge/frontend:7
           ports:
           - containerPort: 8080
           readinessProbe:
