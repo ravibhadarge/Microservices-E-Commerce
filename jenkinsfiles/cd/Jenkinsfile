@@ -1,0 +1,189 @@
+// GitOps CD: Jenkins updates the image tag in Git -> Argo CD syncs the cluster.
+// Flow: validate -> update Git -> approval (staging/prod) -> Argo sync -> health + smoke
+//       -> Prometheus gate -> auto rollback on failure. Manual ROLLBACK action supported.
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'production'], description: 'Target environment')
+        choice(name: 'ACTION', choices: ['deploy', 'rollback'], description: 'deploy = release IMAGE_TAG, rollback = go back to ROLLBACK_TAG')
+        string(name: 'IMAGE_TAG', defaultValue: '', description: 'Image tag to deploy (required for deploy)')
+        string(name: 'ROLLBACK_TAG', defaultValue: '', description: 'Known-good tag (required for rollback)')
+    }
+
+    environment {
+        REPO_URL       = 'https://github.com/ravibhadarge/Microservices-E-Commerce.git'
+        CHART_DIR      = 'ecommerce'                              // Helm chart folder - adjust to your path
+        VALUES_FILE    = "environments/${params.ENVIRONMENT}/values.yaml"  // adjust to your path
+        ARGOCD_SERVER  = 'argocd.example.com'                     // your Argo CD host
+        ARGO_APP       = "ecommerce-${params.ENVIRONMENT}"        // Argo CD Application name
+        NAMESPACE      = "${params.ENVIRONMENT}"
+        PROMETHEUS_URL = 'http://prometheus.monitoring.svc:9090'  // reachable from Jenkins
+        SMOKE_URL      = "https://${params.ENVIRONMENT}.example.com/healthz"
+        ERROR_RATE_MAX = '0.02'                                   // 2% 5xx threshold
+    }
+
+    stages {
+
+        stage('Validate Input') {
+            steps {
+                script {
+                    if (params.ACTION == 'deploy' && !params.IMAGE_TAG?.trim()) {
+                        error 'IMAGE_TAG is required for deploy'
+                    }
+                    if (params.ACTION == 'rollback' && !params.ROLLBACK_TAG?.trim()) {
+                        error 'ROLLBACK_TAG is required for rollback'
+                    }
+                    env.TARGET_TAG = params.ACTION == 'deploy' ? params.IMAGE_TAG.trim() : params.ROLLBACK_TAG.trim()
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.ACTION} ${params.ENVIRONMENT} ${env.TARGET_TAG}"
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                git url: env.REPO_URL, branch: 'main', credentialsId: 'github-credentials'
+            }
+        }
+
+        stage('Helm Lint & Render') {
+            steps {
+                sh '''
+                    set -e
+                    helm lint ${CHART_DIR} -f ${VALUES_FILE} --set image.tag=${TARGET_TAG}
+                    helm template ${ARGO_APP} ${CHART_DIR} -f ${VALUES_FILE} --set image.tag=${TARGET_TAG} > /tmp/rendered.yaml
+                    # optional schema check if kubeconform is installed
+                    command -v kubeconform >/dev/null && kubeconform -strict -ignore-missing-schemas /tmp/rendered.yaml || true
+                '''
+            }
+        }
+
+        stage('Show Change') {
+            steps {
+                withCredentials([string(credentialsId: 'argocd-token', variable: 'ARGOCD_AUTH_TOKEN')]) {
+                    sh '''
+                        argocd app get ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web || true
+                        echo "Current -> Target tag:"
+                        yq '.image.tag' ${VALUES_FILE}
+                        echo ${TARGET_TAG}
+                    '''
+                }
+            }
+        }
+
+        stage('Manual Approval') {
+            when { expression { params.ENVIRONMENT != 'dev' } }
+            steps {
+                script {
+                    def who = params.ENVIRONMENT == 'production' ? 'release-managers,admin' : 'devops,admin'
+                    timeout(time: 30, unit: 'MINUTES') {
+                        input message: "${params.ACTION} ${env.TARGET_TAG} to ${params.ENVIRONMENT}?",
+                              ok: 'Approve',
+                              submitter: who
+                    }
+                }
+            }
+        }
+
+        stage('Update Git (GitOps)') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-credentials',
+                                                  usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    sh '''
+                        set -e
+                        git config user.email "jenkins@ci.local"
+                        git config user.name  "jenkins"
+                        yq -i '.image.tag = strenv(TARGET_TAG)' ${VALUES_FILE}
+                        git add ${VALUES_FILE}
+                        git commit -m "cd(${ENVIRONMENT}): ${ACTION} ${TARGET_TAG} [build ${BUILD_NUMBER}]" || { echo "No change to commit"; exit 0; }
+                        git push https://${GIT_USER}:${GIT_TOKEN}@github.com/ravibhadarge/Microservices-E-Commerce.git HEAD:main
+                    '''
+                    script { env.DEPLOY_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim() }
+                }
+            }
+        }
+
+        stage('Argo CD Sync') {
+            steps {
+                withCredentials([string(credentialsId: 'argocd-token', variable: 'ARGOCD_AUTH_TOKEN')]) {
+                    sh '''
+                        set -e
+                        argocd app get ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web --refresh >/dev/null
+                        argocd app sync ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web --prune
+                        argocd app wait ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web --health --sync --timeout 600
+                    '''
+                }
+            }
+        }
+
+        stage('Verify: Rollout + Smoke') {
+            steps {
+                sh '''
+                    set -e
+                    for d in $(kubectl get deploy -n ${NAMESPACE} -o name); do
+                        kubectl rollout status $d -n ${NAMESPACE} --timeout=300s
+                    done
+                    curl -fsS --retry 5 --retry-delay 10 ${SMOKE_URL}
+                '''
+            }
+        }
+
+        stage('Verify: Monitoring Gate') {
+            steps {
+                sh '''
+                    set -e
+                    echo "Observing for 3 minutes..."
+                    sleep 180
+                    Q='sum(rate(http_requests_total{namespace="'${NAMESPACE}'",code=~"5.."}[3m])) / sum(rate(http_requests_total{namespace="'${NAMESPACE}'"}[3m]))'
+                    RATE=$(curl -fsS --get --data-urlencode "query=$Q" ${PROMETHEUS_URL}/api/v1/query \
+                           | jq -r '.data.result[0].value[1] // "0"')
+                    echo "5xx error rate: $RATE (max ${ERROR_RATE_MAX})"
+                    awk -v r="$RATE" -v m="${ERROR_RATE_MAX}" 'BEGIN{ exit (r>m) }'
+                    # crash-looping pods
+                    ! kubectl get pods -n ${NAMESPACE} --no-headers | grep -E 'CrashLoopBackOff|Error|ImagePullBackOff'
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                // Auto-rollback: only for deploys that already pushed a commit
+                if (params.ACTION == 'deploy' && env.DEPLOY_COMMIT) {
+                    echo "Deploy failed - reverting Git commit ${env.DEPLOY_COMMIT} and re-syncing"
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials',
+                                                      usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                                     string(credentialsId: 'argocd-token', variable: 'ARGOCD_AUTH_TOKEN')]) {
+                        sh '''
+                            set -e
+                            git config user.email "jenkins@ci.local"
+                            git config user.name  "jenkins"
+                            git pull --rebase https://${GIT_USER}:${GIT_TOKEN}@github.com/ravibhadarge/Microservices-E-Commerce.git main
+                            git revert --no-edit ${DEPLOY_COMMIT}
+                            git push https://${GIT_USER}:${GIT_TOKEN}@github.com/ravibhadarge/Microservices-E-Commerce.git HEAD:main
+                            argocd app sync ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web
+                            argocd app wait ${ARGO_APP} --server ${ARGOCD_SERVER} --grpc-web --health --timeout 600
+                        '''
+                    }
+                }
+            }
+            // slackSend(color: 'danger', message: "FAILED ${env.JOB_NAME} #${env.BUILD_NUMBER} (${params.ENVIRONMENT})")
+        }
+        success {
+            echo "${params.ACTION} of ${env.TARGET_TAG} to ${params.ENVIRONMENT} succeeded"
+            // slackSend(color: 'good', message: "OK ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
