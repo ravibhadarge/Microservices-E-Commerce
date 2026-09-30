@@ -1,7 +1,3 @@
-// GitOps CD: Jenkins updates the image tag in Git -> Argo CD syncs the cluster.
-// Flow: validate -> update Git -> approval (staging/prod) -> Argo sync -> health + smoke
-//       -> Prometheus gate -> auto rollback on failure. Manual ROLLBACK action supported.
-
 ```groovy
 pipeline {
     agent any
