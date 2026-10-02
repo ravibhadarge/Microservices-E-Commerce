@@ -1,6 +1,10 @@
+# Per-environment overrides for the ecommerce chart.
+# services.<name>.tag and loadgenerator.image.tag are written by Jenkins
+# (scripts/update-image-tag.sh) and equal the Jenkins build number of that service.
+# Everything else in this file is safe to edit by hand; Argo CD applies it on commit.
 namespace: dev
 image:
-  tag: "7"
+  tag: "dev"
   pullPolicy: IfNotPresent
 application:
   replicas: 1
@@ -29,6 +33,8 @@ loadgenerator:
   enabled: true
   replicas: 1
   users: "10"
+  image:
+    tag: "7"
 services:
   adservice:
     tag: "10"

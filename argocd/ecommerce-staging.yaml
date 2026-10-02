@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ecommerce-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ravibhadarge/Microservices-E-Commerce.git
+    targetRevision: main
+    path: ecommerce                     # the Helm chart
+    helm:
+      releaseName: ecommerce-staging
+      valueFiles:
+        - ../environments/staging/values.yaml   # per-env values + per-service image tags (written by Jenkins)
+  destination:
+    server: https://kubernetes.default.svc   # change if Argo CD manages a remote cluster
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas                # the HPAs own replica counts, don't fight them
+  revisionHistoryLimit: 10

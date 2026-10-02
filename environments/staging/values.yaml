@@ -1,25 +1,24 @@
+# Per-environment overrides for the ecommerce chart.
+# services.<name>.tag and loadgenerator.image.tag are written by Jenkins
+# (scripts/update-image-tag.sh) and equal the Jenkins build number of that service.
+# Everything else in this file is safe to edit by hand; Argo CD applies it on commit.
 namespace: staging
-
 image:
   tag: "latest"
   pullPolicy: IfNotPresent
-
 application:
   replicas: 2
-
 ingress:
   enabled: true
   host: staging.example.com
   scheme: internet-facing
   targetType: ip
-
 hpa:
   enabled: true
   minReplicas: 2
   maxReplicas: 8
   cpuUtilization: 70
   memoryUtilization: 80
-
 postgres:
   enabled: true
   database: ecommerce
@@ -28,9 +27,32 @@ postgres:
   storage:
     size: 20Gi
     storageClassName: gp3
-
 redis:
   enabled: true
-
 loadgenerator:
   enabled: false
+  image:
+    tag: "7"
+services:
+  adservice:
+    tag: "10"
+  backend:
+    tag: "1"
+  cartservice:
+    tag: "10"
+  checkoutservice:
+    tag: "10"
+  currencyservice:
+    tag: "7"
+  emailservice:
+    tag: "2"
+  frontend:
+    tag: "7"
+  paymentservice:
+    tag: "6"
+  productcatalogservice:
+    tag: "7"
+  recommendationservice:
+    tag: "2"
+  shippingservice:
+    tag: "7"

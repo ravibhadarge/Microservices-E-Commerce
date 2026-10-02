@@ -1,49 +1,46 @@
+// CI for adservice: build image -> push to Docker Hub -> write the new tag into Git (GitOps).
+// Image tag = Jenkins BUILD_NUMBER of this job (run 1 -> :1, run 2 -> :2, ...).
+// Argo CD watches Git and rolls the new tag out; this pipeline never touches the cluster.
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
     environment {
         GIT_REPO_NAME = "Microservices-E-Commerce"
-        GIT_EMAIL = "ravibhadarge15@gmail.com"
         GIT_USER_NAME = "ravibhadarge"
+        GIT_EMAIL     = "ravibhadarge15@gmail.com"
 
-        DOCKER_USERNAME = "ravibhadarge"
-        IMAGE_NAME = "adservice"
-        REPO_URL = "ravibhadarge/ecommerce-adservice"
-        YAML_FILE = "adservice.yaml"
+        SERVICE       = "adservice"
+        DOCKER_IMAGE  = "ravibhadarge/ecommerce-adservice"
+        BUILD_CONTEXT = "src/adservice"
+        GITOPS_ENV    = "dev"      // CI only ever updates dev; use the CD job to promote
     }
 
     stages {
 
         stage('Cleaning Workspace') {
-            steps {
-                cleanWs()
-            }
+            steps { cleanWs() }
         }
 
         stage('Checkout from Git') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/ravibhadarge/Microservices-E-Commerce-eks-project.git'
-            }
-        }
-
-        stage('Docker Version') {
-            steps {
-                sh 'docker --version'
+                    credentialsId: 'github-credentials',
+                    url: "https://github.com/${env.GIT_USER_NAME}/${env.GIT_REPO_NAME}.git"
             }
         }
 
         stage('Docker Image Build') {
             steps {
-                dir('src/adservice') {
+                dir(env.BUILD_CONTEXT) {
                     sh '''
                         set -e
-
-                        echo "Building ${REPO_URL}:${BUILD_NUMBER}"
-
-                        docker build \
-                          -t ${REPO_URL}:${BUILD_NUMBER} \
-                          -t ${REPO_URL}:latest .
+                        echo "Building ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .
                     '''
                 }
             }
@@ -51,20 +48,12 @@ pipeline {
 
         stage('Docker Hub Login') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USERNAME',
-                        passwordVariable: 'DOCKER_PASSWORD'
-                    )
-                ]) {
-                    sh '''
-                        set -e
-
-                        echo "$DOCKER_PASSWORD" | docker login \
-                            --username "$DOCKER_USERNAME" \
-                            --password-stdin
-                    '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
+                    sh 'echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin'
                 }
             }
         }
@@ -73,58 +62,27 @@ pipeline {
             steps {
                 sh '''
                     set -e
-
-                    echo "Pushing ${REPO_URL}:${BUILD_NUMBER}"
-                    docker push ${REPO_URL}:${BUILD_NUMBER}
-
-                    echo "Pushing ${REPO_URL}:latest"
-                    docker push ${REPO_URL}:latest
-
-                    echo "Docker Hub push successful!"
+                    docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
                 '''
             }
         }
 
-        stage('Update Deployment File') {
+        stage('Update GitOps Values') {
             steps {
-                dir('kubernetes-files') {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: 'github-credentials',
-                            usernameVariable: 'GITHUB_USERNAME',
-                            passwordVariable: 'GITHUB_TOKEN'
-                        )
-                    ]) {
-                        sh '''
-                            set -e
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GITHUB_USERNAME',
+                    passwordVariable: 'GITHUB_TOKEN'
+                )]) {
+                    sh '''
+                        set -e
+                        git config user.email "${GIT_EMAIL}"
+                        git config user.name  "${GIT_USER_NAME}"
+                        git remote set-url origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
 
-                            git config user.email "${GIT_EMAIL}"
-                            git config user.name "${GIT_USER_NAME}"
-
-                            git remote set-url origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
-
-                            git fetch origin main
-                            git reset --hard origin/main
-
-                            echo "Updating ${YAML_FILE}"
-
-                            DOCKER_IMAGE="${REPO_URL}"
-
-                            echo "Image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-
-                            sed -i "s#image:.*#image: ${DOCKER_IMAGE}:${BUILD_NUMBER}#g" "${YAML_FILE}"
-
-                            git add "${YAML_FILE}"
-
-                            if git diff --cached --quiet; then
-                                echo "No deployment changes."
-                            else
-                                git commit -m "Update ${IMAGE_NAME} image to version ${BUILD_NUMBER}"
-                                git push origin HEAD:main
-                                echo "GitHub deployment update successful!"
-                            fi
-                        '''
-                    }
+                        # environments/dev/values.yaml  ->  services.${SERVICE}.tag = BUILD_NUMBER
+                        scripts/update-image-tag.sh "${GITOPS_ENV}" "${SERVICE}=${BUILD_NUMBER}"
+                    '''
                 }
             }
         }
@@ -134,20 +92,11 @@ pipeline {
         always {
             sh 'docker logout || true'
         }
-
         success {
-            echo '=========================================='
-            echo 'PIPELINE SUCCESS'
-            echo 'Docker image pushed to Docker Hub'
-            echo 'Kubernetes YAML updated'
-            echo '=========================================='
+            echo "${env.SERVICE}:${env.BUILD_NUMBER} pushed and written to environments/${env.GITOPS_ENV}/values.yaml - Argo CD will deploy it."
         }
-
         failure {
-            echo '=========================================='
-            echo 'PIPELINE FAILED'
-            echo 'Check the failed stage above.'
-            echo '=========================================='
+            echo 'PIPELINE FAILED - check the failed stage above.'
         }
     }
 }

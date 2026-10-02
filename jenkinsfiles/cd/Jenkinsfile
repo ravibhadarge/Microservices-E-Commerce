@@ -1,3 +1,7 @@
+// CD (GitOps): this job only changes image tags in Git. Argo CD does the actual deploy.
+//   promote  : copy every service tag from one environment to another (dev -> staging -> production)
+//   deploy   : set one service to a specific tag (a build number of that service's CI job)
+//   rollback : same as deploy, with an older known-good tag (Git history keeps the audit trail)
 pipeline {
     agent any
 
@@ -9,34 +13,22 @@ pipeline {
     }
 
     parameters {
-        choice(
-            name: 'ENVIRONMENT',
-            choices: ['dev', 'staging', 'production'],
-            description: 'Target environment'
-        )
-
-        choice(
-            name: 'ACTION',
-            choices: ['deploy', 'rollback'],
-            description: 'Deployment action'
-        )
-
-        string(
-            name: 'IMAGE_TAG',
-            defaultValue: '',
-            description: 'Docker image tag for deployment'
-        )
-
-        string(
-            name: 'ROLLBACK_TAG',
-            defaultValue: '',
-            description: 'Known-good Docker image tag for rollback'
-        )
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'production'], description: 'Target environment')
+        choice(name: 'ACTION', choices: ['promote', 'deploy', 'rollback'], description: 'promote = copy all tags from PROMOTE_FROM; deploy/rollback = set one service to IMAGE_TAG')
+        choice(name: 'PROMOTE_FROM', choices: ['dev', 'staging'], description: 'Source environment (only used by promote)')
+        choice(name: 'SERVICE', choices: [
+            'frontend', 'backend', 'adservice', 'cartservice', 'checkoutservice', 'currencyservice',
+            'emailservice', 'paymentservice', 'productcatalogservice', 'recommendationservice',
+            'shippingservice', 'loadgenerator'
+        ], description: 'Service (only used by deploy / rollback)')
+        string(name: 'IMAGE_TAG', defaultValue: '', description: 'Build number of that service, e.g. 12 (only used by deploy / rollback)')
+        booleanParam(name: 'VERIFY', defaultValue: true, description: 'Wait for the rollout with kubectl (needs a kubectl context for the target cluster)')
     }
 
     environment {
-        REPO_URL  = 'https://github.com/ravibhadarge/Microservices-E-Commerce.git'
-        CHART_DIR = 'ecommerce'
+        GIT_REPO_NAME = 'Microservices-E-Commerce'
+        GIT_USER_NAME = 'ravibhadarge'
+        VALUES_FILE   = "environments/${params.ENVIRONMENT}/values.yaml"
     }
 
     stages {
@@ -44,53 +36,41 @@ pipeline {
         stage('Validate Input') {
             steps {
                 script {
-                    if (params.ACTION == 'deploy' && !params.IMAGE_TAG?.trim()) {
-                        error('IMAGE_TAG is required for deploy')
+                    if (params.ACTION == 'promote') {
+                        if (params.PROMOTE_FROM == params.ENVIRONMENT) {
+                            error('PROMOTE_FROM and ENVIRONMENT must differ')
+                        }
+                        env.GITOPS_ARGS = "--from ${params.PROMOTE_FROM}"
+                        currentBuild.displayName = "#${env.BUILD_NUMBER} promote ${params.PROMOTE_FROM}->${params.ENVIRONMENT}"
+                    } else {
+                        def tag = params.IMAGE_TAG.trim()
+                        if (!(tag ==~ /^[A-Za-z0-9._-]+$/)) {
+                            error('IMAGE_TAG is required for deploy/rollback (letters, digits, . _ - only)')
+                        }
+                        env.GITOPS_ARGS = "${params.SERVICE}=${tag}"
+                        currentBuild.displayName = "#${env.BUILD_NUMBER} ${params.ACTION} ${params.ENVIRONMENT} ${params.SERVICE}:${tag}"
                     }
-
-                    if (params.ACTION == 'rollback' && !params.ROLLBACK_TAG?.trim()) {
-                        error('ROLLBACK_TAG is required for rollback')
-                    }
-
-                    env.TARGET_TAG =
-                        params.ACTION == 'deploy'
-                        ? params.IMAGE_TAG.trim()
-                        : params.ROLLBACK_TAG.trim()
-
-                    env.VALUES_FILE =
-                        "environments/${params.ENVIRONMENT}/values.yaml"
-
-                    currentBuild.displayName =
-                        "#${env.BUILD_NUMBER} ${params.ACTION} ${params.ENVIRONMENT} ${env.TARGET_TAG}"
                 }
             }
         }
 
         stage('Checkout') {
             steps {
-                git(
-                    url: env.REPO_URL,
+                git url: "https://github.com/${env.GIT_USER_NAME}/${env.GIT_REPO_NAME}.git",
                     branch: 'main',
                     credentialsId: 'github-credentials'
-                )
             }
         }
 
         stage('Helm Lint & Render') {
             steps {
+                // Render the chart exactly as Argo CD will, using the *proposed* tags.
                 sh '''
                     set -e
-
-                    helm lint "$CHART_DIR" \
-                      -f "$VALUES_FILE" \
-                      --set image.tag="$TARGET_TAG"
-
-                    helm template ecommerce-$ENVIRONMENT "$CHART_DIR" \
-                      -n "$ENVIRONMENT" \
-                      -f "$VALUES_FILE" \
-                      --set image.tag="$TARGET_TAG" \
-                      > /tmp/ecommerce-rendered.yaml
-
+                    APPLY_ONLY=1 scripts/update-image-tag.sh "$ENVIRONMENT" $GITOPS_ARGS
+                    helm lint ecommerce -f "$VALUES_FILE"
+                    helm template "ecommerce-$ENVIRONMENT" ecommerce -n "$ENVIRONMENT" -f "$VALUES_FILE" > /tmp/ecommerce-rendered.yaml
+                    git checkout -- "$VALUES_FILE"
                     echo "Helm validation successful"
                 '''
             }
@@ -100,165 +80,74 @@ pipeline {
             steps {
                 sh '''
                     set -e
-
                     echo "======================================"
                     echo "Environment : $ENVIRONMENT"
-                    echo "Action      : $ACTION"
+                    echo "Action      : $ACTION   ($GITOPS_ARGS)"
                     echo "Values file : $VALUES_FILE"
-                    echo "Current tag :"
-                    yq '.image.tag' "$VALUES_FILE"
-
-                    echo "Target tag  : $TARGET_TAG"
                     echo "======================================"
+                    DRY_RUN=1 scripts/update-image-tag.sh "$ENVIRONMENT" $GITOPS_ARGS
                 '''
             }
         }
 
         stage('Manual Approval') {
+            when { expression { params.ENVIRONMENT != 'dev' } }
             steps {
                 timeout(time: 30, unit: 'MINUTES') {
-                    input(
-                        message: """
-Approve ${params.ACTION} of image ${env.TARGET_TAG}
-to ${params.ENVIRONMENT}?
-
-Environment: ${params.ENVIRONMENT}
-Action:      ${params.ACTION}
-Image Tag:   ${env.TARGET_TAG}
-Values File: ${env.VALUES_FILE}
-""",
-                        ok: 'Approve Deployment'
-                    )
+                    input message: "Approve ${params.ACTION} (${env.GITOPS_ARGS}) on ${params.ENVIRONMENT}?",
+                          ok: 'Approve Deployment'
                 }
             }
         }
 
         stage('Update Git - GitOps') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github-credentials',
-                        usernameVariable: 'GIT_USER',
-                        passwordVariable: 'GIT_TOKEN'
-                    )
-                ]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
                     sh '''
                         set -e
-
                         git config user.email "jenkins@ci.local"
-                        git config user.name "jenkins"
-
-                        echo "Updating image tag..."
-
-                        yq -i '.image.tag = strenv(TARGET_TAG)' "$VALUES_FILE"
-
-                        echo "New image tag:"
-                        yq '.image.tag' "$VALUES_FILE"
-
-                        git add "$VALUES_FILE"
-
-                        git commit \
-                          -m "cd(${ENVIRONMENT}): ${ACTION} ${TARGET_TAG} [build ${BUILD_NUMBER}]"
-
-                        git push \
-                          "https://${GIT_USER}:${GIT_TOKEN}@github.com/ravibhadarge/Microservices-E-Commerce.git" \
-                          HEAD:main
+                        git config user.name  "jenkins"
+                        git remote set-url origin "https://${GIT_USER}:${GIT_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git"
+                        scripts/update-image-tag.sh "$ENVIRONMENT" $GITOPS_ARGS
                     '''
-
                     script {
-                        env.DEPLOY_COMMIT =
-                            sh(
-                                script: 'git rev-parse HEAD',
-                                returnStdout: true
-                            ).trim()
+                        env.DEPLOY_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
                     }
                 }
             }
         }
 
-        stage('Wait for Argo CD') {
+        stage('Verify Rollout (Argo CD)') {
+            when { expression { params.VERIFY } }
             steps {
-                echo """
-GitOps update completed.
-
-Commit:
-${env.DEPLOY_COMMIT}
-
-Argo CD will detect the Git change and synchronize:
-${params.ENVIRONMENT}
-"""
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                script {
-                    sh '''
-                        set +e
-
-                        echo "Waiting for Kubernetes deployment..."
-
-                        sleep 30
-
-                        kubectl get namespace "$ENVIRONMENT"
-
-                        kubectl get deployments \
-                          -n "$ENVIRONMENT"
-
-                        kubectl get pods \
-                          -n "$ENVIRONMENT" \
-                          -o wide
-
-                        kubectl get services \
-                          -n "$ENVIRONMENT"
-
-                        kubectl get ingress \
-                          -n "$ENVIRONMENT"
-
-                        echo "Deployment verification completed"
-                    '''
-                }
+                // Argo CD polls Git (about every 3 min) unless you configured a webhook.
+                sh '''
+                    set -e
+                    while IFS== read -r svc tag; do
+                        [ -n "$svc" ] || continue
+                        echo "Waiting for $svc:$tag in namespace $ENVIRONMENT ..."
+                        ok=0
+                        for i in $(seq 1 60); do
+                            img=$(kubectl get deploy "$svc" -n "$ENVIRONMENT" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
+                            case "$img" in *":$tag") ok=1; break;; esac
+                            sleep 10
+                        done
+                        [ "$ok" = 1 ] || { echo "Argo CD has not applied $svc:$tag yet (last image: $img)"; exit 1; }
+                        kubectl rollout status deploy/"$svc" -n "$ENVIRONMENT" --timeout=300s
+                    done < .gitops-changes
+                    kubectl get pods -n "$ENVIRONMENT"
+                '''
             }
         }
     }
 
     post {
-
-        success {
-            echo """
-========================================
-GITOPS DEPLOYMENT SUCCESS
-========================================
-
-Environment : ${params.ENVIRONMENT}
-Action      : ${params.ACTION}
-Image Tag   : ${env.TARGET_TAG}
-Commit      : ${env.DEPLOY_COMMIT}
-
-Argo CD will keep the cluster synchronized
-with Git.
-========================================
-"""
-        }
-
-        failure {
-            echo """
-========================================
-GITOPS DEPLOYMENT FAILED
-========================================
-
-Environment : ${params.ENVIRONMENT}
-Action      : ${params.ACTION}
-Image Tag   : ${env.TARGET_TAG}
-
-Check the Jenkins console and Argo CD
-application status.
-========================================
-"""
-        }
-
-        always {
-            cleanWs()
-        }
+        success { echo "GitOps change committed (${env.DEPLOY_COMMIT}). Argo CD keeps ${params.ENVIRONMENT} in sync with Git." }
+        failure { echo 'GitOps change failed - check the console and the Argo CD application status.' }
+        always  { cleanWs() }
     }
 }

@@ -3,6 +3,9 @@ fullnameOverride: ""
 
 namespace: dev
 
+# Fallback tag, used only when a service has no tag of its own.
+# Real tags live in environments/<env>/values.yaml (services.<name>.tag),
+# written by Jenkins with scripts/update-image-tag.sh.
 image:
   tag: "latest"
   pullPolicy: IfNotPresent
@@ -18,6 +21,7 @@ services:
   frontend:
     enabled: true
     repository: ravibhadarge/frontend
+    tag: ""
     port: 8080
     servicePort: 80
     replicas: 2
@@ -32,6 +36,7 @@ services:
   backend:
     enabled: true
     repository: ravibhadarge/backend
+    tag: ""
     port: 8080
     servicePort: 80
     replicas: 2
@@ -46,6 +51,7 @@ services:
   adservice:
     enabled: true
     repository: ravibhadarge/ecommerce-adservice
+    tag: ""
     port: 9555
     servicePort: 9555
     replicas: 2
@@ -60,6 +66,7 @@ services:
   cartservice:
     enabled: true
     repository: ravibhadarge/cartservice
+    tag: ""
     port: 7070
     servicePort: 7070
     replicas: 2
@@ -74,6 +81,7 @@ services:
   checkoutservice:
     enabled: true
     repository: ravibhadarge/checkoutservice
+    tag: ""
     port: 5050
     servicePort: 5050
     replicas: 2
@@ -88,6 +96,7 @@ services:
   currencyservice:
     enabled: true
     repository: ravibhadarge/currencyservice
+    tag: ""
     port: 7000
     servicePort: 7000
     replicas: 2
@@ -102,6 +111,7 @@ services:
   emailservice:
     enabled: true
     repository: ravibhadarge/emailservice
+    tag: ""
     port: 8080
     servicePort: 5000
     replicas: 2
@@ -116,6 +126,7 @@ services:
   paymentservice:
     enabled: true
     repository: ravibhadarge/paymentservice
+    tag: ""
     port: 50051
     servicePort: 50051
     replicas: 2
@@ -130,6 +141,7 @@ services:
   productcatalogservice:
     enabled: true
     repository: ravibhadarge/productcatalogservice
+    tag: ""
     port: 3550
     servicePort: 3550
     replicas: 2
@@ -144,6 +156,7 @@ services:
   recommendationservice:
     enabled: true
     repository: ravibhadarge/recommendationservice
+    tag: ""
     port: 8080
     servicePort: 8080
     replicas: 2
@@ -158,6 +171,7 @@ services:
   shippingservice:
     enabled: true
     repository: ravibhadarge/shippingservice
+    tag: ""
     port: 50051
     servicePort: 50051
     replicas: 2
@@ -207,7 +221,7 @@ loadgenerator:
   enabled: true
   image:
     repository: ravibhadarge/loadgenerator
-    tag: "latest"
+    tag: ""
   replicas: 1
   users: "10"
 
