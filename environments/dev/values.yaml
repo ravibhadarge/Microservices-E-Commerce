@@ -1,6 +1,6 @@
 namespace: dev
 image:
-  tag: "dev"
+  tag: "7"
   pullPolicy: IfNotPresent
 application:
   replicas: 2
@@ -29,3 +29,26 @@ loadgenerator:
   enabled: true
   replicas: 1
   users: "10"
+services:
+  adservice:
+    tag: "10"
+  backend:
+    tag: "1"
+  cartservice:
+    tag: "10"
+  checkoutservice:
+    tag: "10"
+  currencyservice:
+    tag: "7"
+  emailservice:
+    tag: "2"
+  frontend:
+    tag: "7"
+  paymentservice:
+    tag: "6"
+  productcatalogservice:
+    tag: "7"
+  recommendationservice:
+    tag: "2"
+  shippingservice:
+    tag: "7"

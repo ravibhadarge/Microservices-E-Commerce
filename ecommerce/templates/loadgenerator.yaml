@@ -27,7 +27,7 @@ spec:
 
       initContainers:
         - name: frontend-check
-          image: {{ .Values.loadgenerator.image.repository }}:{{ .Values.image.tag }}
+          image: {{ .Values.loadgenerator.image.repository }}:{{ .Values.loadgenerator.image.tag | default .Values.image.tag | toString }}
           command:
             - /bin/sh
             - -exc
@@ -53,7 +53,7 @@ spec:
 
       containers:
         - name: loadgenerator
-          image: {{ .Values.loadgenerator.image.repository }}:{{ .Values.image.tag }}
+          image: {{ .Values.loadgenerator.image.repository }}:{{ .Values.loadgenerator.image.tag | default .Values.image.tag | toString }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
 
           securityContext:

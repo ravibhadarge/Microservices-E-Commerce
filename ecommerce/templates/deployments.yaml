@@ -35,7 +35,7 @@ spec:
 
       containers:
         - name: {{ $name }}
-          image: "{{ $svc.repository }}:{{ $.Values.image.tag }}"
+          image: "{{ $svc.repository }}:{{ $svc.tag | default $.Values.image.tag | toString }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
 
           securityContext:
