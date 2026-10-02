@@ -27,10 +27,16 @@ postgres:
   storage:
     size: 10Gi
     storageClassName: gp3
+  resources:
+    requests:
+      cpu: 100m
 redis:
   enabled: true
+  resources:
+    requests:
+      cpu: 25m
 loadgenerator:
-  enabled: true
+  enabled: false
   replicas: 1
   users: "10"
   image:
@@ -38,23 +44,56 @@ loadgenerator:
 services:
   adservice:
     tag: "10"
+    resources:
+      requests:
+        cpu: 25m
   backend:
     tag: "1"
+    resources:
+      requests:
+        cpu: 25m
   cartservice:
     tag: "10"
+    resources:
+      requests:
+        cpu: 25m
   checkoutservice:
     tag: "10"
+    resources:
+      requests:
+        cpu: 25m
   currencyservice:
     tag: "7"
+    resources:
+      requests:
+        cpu: 25m
   emailservice:
     tag: "2"
+    resources:
+      requests:
+        cpu: 25m
   frontend:
     tag: "7"
+    resources:
+      requests:
+        cpu: 25m
   paymentservice:
     tag: "6"
+    resources:
+      requests:
+        cpu: 25m
   productcatalogservice:
     tag: "7"
+    resources:
+      requests:
+        cpu: 25m
   recommendationservice:
     tag: "2"
+    resources:
+      requests:
+        cpu: 25m
   shippingservice:
     tag: "7"
+    resources:
+      requests:
+        cpu: 25m
